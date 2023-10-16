@@ -107,9 +107,7 @@ def break_into_chunks(comments_df, max_words):
 
     chunks.append((start_index, index))
 
-    chunks_metadata_df = pd.DataFrame(chunks, columns=['from_line', 'to_line'])
-    
-    return chunks_metadata_df
+    return pd.DataFrame(chunks, columns=['from_line', 'to_line'])
 
 def send_chunks_to_chatgpt(comments_df, chunks_metadata_df, model,username):
     results = []
@@ -118,44 +116,38 @@ def send_chunks_to_chatgpt(comments_df, chunks_metadata_df, model,username):
         start_line, end_line = row['from_line'], row['to_line']
         chunk_comments = comments_df.loc[start_line:end_line, 'reply_comment']
         compiled_comments = "\n-----\n".join(chunk_comments)
-        
+
         # Initialize a new ChatGptCore instance for each chunk
         cgpt_core = ChatGptCore(instructions=INITIAL_INSTRUCTION, model=model)
-        
+
         # Add the compiled comments as a message
         cgpt_core.add_message(compiled_comments,actor="user")
 
         # Add the instruction for what to do with them
         cgpt_core.add_message(CHUNK_INSTRUCTION.replace('_USERNAME_', username),actor="user")
-        
+
         # Generate a response from ChatGPT
         response = cgpt_core.generate_response()
         print(response)
-        
+
         # Store the response along with the chunk's metadata
         results.append([start_line, end_line, response])
 
-    # Create a DataFrame from the results and save it to a CSV file
-    results_df = pd.DataFrame(results, columns=['from_line', 'to_line', 'response'])
-    
-    return results_df
+    return pd.DataFrame(results, columns=['from_line', 'to_line', 'response'])
 
 def synthesize_profiles(username, results_df, model):
     # Initializing the ChatGptCore instance with the new instructions
     cgpt_core = ChatGptCore(instructions=INITIAL_INSTRUCTION, model="gpt-3.5-turbo-16k")
-    
+
     # Combining all GPT responses into a single message, in reverse order
     combined_message = "\n-----\n".join(results_df['response'][::-1])
-    
+
     # Adding the combined message to cgpt_core, with instructions
     cgpt_core.add_message(SYNTHESIS_SETUP_INSTRUCTION.replace('_USERNAME_', username),actor="user")
     cgpt_core.add_message(combined_message,actor="assistant")
     cgpt_core.add_message(SYNTHESIS_EXECUTION_INSTRUCTION.replace('_USERNAME_', username),actor="user")
-    
-    # Generating the synthesized response from ChatGPT
-    synthesized_response = cgpt_core.generate_response()
-    
-    return synthesized_response
+
+    return cgpt_core.generate_response()
 
 def save_to_file(username, content):
     with open(f"{username}_synthesized_profile.txt", "w") as file:
