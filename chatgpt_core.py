@@ -66,32 +66,32 @@ class ChatGptCore:
                 messages=outbound_messages
             )
         except openai.error.RateLimitError:
-            if retries > 0:
-                time.sleep(20)  # Wait for 20 seconds before retrying
-                return self.generate_response(message, store_message, retries-1)
-            else:
+            if retries <= 0:
                 raise  # Re-raise the exception if no retries left
+            time.sleep(20)  # Wait for 20 seconds before retrying
+            return self.generate_response(message, store_message, retries-1)
         except openai.error.InvalidRequestError as e:  # Adjust this to the specific error class you expect
-            # Check if the error is due to too many tokens and if we have retries left
-            if "Please reduce the length of the messages" in str(e) and retries > 0:
-                # Mark the oldest non-background sendable message as unsendable
-                for index, row in self.messages.iterrows():
-                    if row['sendable'] and row['actor'] != "background":
-                        self.messages.at[index, 'sendable'] = False
-                        break
-
-                # Recursive call with decremented retries
-                return self.generate_response(message, store_message, retries-1)
-            else:
+            if (
+                "Please reduce the length of the messages" not in str(e)
+                or retries <= 0
+            ):
                 raise e
 
+            # Mark the oldest non-background sendable message as unsendable
+            for index, row in self.messages.iterrows():
+                if row['sendable'] and row['actor'] != "background":
+                    self.messages.at[index, 'sendable'] = False
+                    break
+
+            # Recursive call with decremented retries
+            return self.generate_response(message, store_message, retries-1)
         # If store_message is True, store the user and AI's messages to the history
         if store_message and message is not None:
             self.add_message(message)
         assistant_message = response.choices[0].message['content']
         if store_message:
             self.add_message(assistant_message, actor="assistant")
-        
+
         if self.filename:
             self.save_chat()
 
